@@ -466,7 +466,31 @@ function render() {
 
 document.getElementById('prev-week').onclick = () => { state.week = Math.max(0, state.week - 1); state.slot = null; render(); };
 document.getElementById('next-week').onclick = () => { state.week++; state.slot = null; render(); };
-document.getElementById('btn-confirm').onclick = () => { state.confirmed = true; render(); };
+document.getElementById('btn-confirm').onclick = () => {
+  state.confirmed = true;
+  render();
+  if (state.slot && state.name) {
+    const svc = defs.find(d => d.id === state.service);
+    const timeParts = state.slot.time.split(':');
+    fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/bookings.json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: Date.now(),
+        name: state.name,
+        phone: state.phone || 'sin número',
+        service: svc ? svc.name + ' · ' + svc.duration : state.service,
+        barber: state.barber || 'valen',
+        isoDate: state.slot.iso,
+        time: state.slot.time,
+        min: parseInt(timeParts[0]) * 60 + parseInt(timeParts[1]),
+        dur: svc ? svc.mins : 30,
+        status: 'online',
+        createdAt: new Date().toISOString()
+      })
+    }).catch(() => {});
+  }
+};
 document.getElementById('btn-cancel').onclick = () => { state.slot = null; state.confirmed = false; state.name = ''; state.phone = ''; render(); };
 document.getElementById('btn-cancel-confirmed').onclick = () => { state.slot = null; state.confirmed = false; state.name = ''; state.phone = ''; render(); };
 document.getElementById('input-name').oninput = e => { state.name = e.target.value; };

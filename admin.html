@@ -105,6 +105,7 @@
 </head>
 <body style="background:#0a0a0a;color:#f2f2ee;min-height:100vh">
 
+<<<<<<< HEAD
 <!-- PASSWORD -->
 <div id="view-password" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:44px;padding:40px 24px">
   <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
@@ -121,6 +122,10 @@
 
 <!-- LOGIN -->
 <div id="view-login" style="min-height:100vh;display:none;flex-direction:column;align-items:center;justify-content:center;gap:44px;padding:40px 24px">
+=======
+<!-- LOGIN -->
+<div id="view-login" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:44px;padding:40px 24px">
+>>>>>>> 8ff31e52df2c74a4044306516467e3a885595540
   <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
     <span style="width:64px;height:64px;border-radius:999px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:0.06em;line-height:1">QC</span>
     <span style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:0.12em;line-height:1">QCORTESANO</span>
@@ -247,8 +252,34 @@ const S = {
   blocked: {},
   dayIdx: 1,
   appts: [],
+  fbBookings: [],
   newName: '', newPhone: '', newWhen: ''
 };
+
+const FB_URL = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/bookings.json';
+
+function computedFbAppts() {
+  const start = weekStart();
+  return S.fbBookings.map(b => {
+    const parts = b.isoDate.split('-').map(Number);
+    const bd = new Date(parts[0], parts[1] - 1, parts[2]);
+    const day = Math.round((bd - start) / 864e5);
+    return { ...b, day, owner: b.barber };
+  }).filter(b => b.day >= 1 && b.day <= 5);
+}
+
+function allAppts() { return [...S.appts, ...computedFbAppts()]; }
+
+function loadFirebaseBookings() {
+  fetch(FB_URL)
+    .then(r => r.json())
+    .then(data => {
+      if (!data) { S.fbBookings = []; }
+      else { S.fbBookings = Object.values(data).filter(b => b && b.status !== 'cancelado'); }
+      if (S.user) render();
+    })
+    .catch(() => {});
+}
 
 function weekStart() {
   const d = new Date();
@@ -291,6 +322,8 @@ function login(user) {
   document.getElementById('view-login').style.display = 'none';
   const dash = document.getElementById('view-dash');
   dash.style.display = 'flex';
+  loadFirebaseBookings();
+  if (!S._poll) S._poll = setInterval(loadFirebaseBookings, 30000);
   render();
 }
 
@@ -394,7 +427,7 @@ function renderAlerts() {
   const wrap  = document.getElementById('low-alert');
   const chips = document.getElementById('low-alert-chips');
   const start = weekStart();
-  const mine  = S.appts.filter(a => a.owner === S.user && a.status !== 'cancelado');
+  const mine  = allAppts().filter(a => a.owner === S.user && a.status !== 'cancelado');
 
   const lowDays = [];
   for (let i = 1; i <= 5; i++) {
@@ -429,7 +462,7 @@ function selectAdminDay(i) {
 
 function renderCalendar() {
   const start = weekStart();
-  const mine  = S.appts.filter(a => a.owner === S.user && a.status !== 'cancelado');
+  const mine  = allAppts().filter(a => a.owner === S.user && a.status !== 'cancelado');
 
   // ── Day chips ──
   const daysEl = document.getElementById('admin-days');
@@ -494,7 +527,7 @@ function renderCalendar() {
 }
 
 function slotClick(dayIdx, m) {
-  const mine = S.appts.filter(a => a.owner === S.user && a.status !== 'cancelado');
+  const mine = allAppts().filter(a => a.owner === S.user && a.status !== 'cancelado');
   const appt = mine.find(a => a.day === dayIdx && m >= a.min && m < a.min + a.dur);
   if (appt) { S.detail = appt.id; renderDetail(); return; }
   if (S.paint) { toggleCell(dayIdx, m); renderCalendar(); }
@@ -503,7 +536,7 @@ function slotClick(dayIdx, m) {
 function renderDetail() {
   const panel = document.getElementById('detail-panel');
   if (!S.detail) { panel.style.display = 'none'; return; }
-  const appt  = S.appts.find(a => a.id === S.detail);
+  const appt  = allAppts().find(a => a.id === S.detail);
   if (!appt)   { panel.style.display = 'none'; return; }
 
   const start = weekStart();
@@ -528,7 +561,7 @@ function renderDetail() {
 
 function renderList() {
   const start = weekStart();
-  const mine  = S.appts.filter(a => a.owner === S.user);
+  const mine  = allAppts().filter(a => a.owner === S.user);
   const active = mine.filter(a => a.status !== 'cancelado').length;
 
   document.getElementById('count-label').textContent = active + (active === 1 ? ' activo' : ' activos');
@@ -572,7 +605,7 @@ function renderList() {
 }
 
 function renderStatusBar() {
-  const active = S.appts.filter(a => a.owner === S.user && a.status !== 'cancelado').length;
+  const active = allAppts().filter(a => a.owner === S.user && a.status !== 'cancelado').length;
   document.getElementById('status-bar').textContent =
     active + (active === 1 ? ' turno esta semana' : ' turnos esta semana') + ' · cambios visibles al instante para los clientes';
 }
@@ -591,7 +624,6 @@ function checkPassword() {
     document.getElementById('pwd-input').focus();
   }
 }
-
 // Asegurar que la vista lista empiece oculta
 document.getElementById('view-list').style.display = 'none';
 document.getElementById('view-cal').style.display  = 'flex';
