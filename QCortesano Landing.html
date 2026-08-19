@@ -270,7 +270,7 @@ const BOOKED = { '2':['10:30','11:00','17:15'], '4':['16:00'], '6':['12:00','12:
 
 function hhmm(m){ const h = Math.floor(m/60), mm = m%60; return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm; }
 
-const state = { service: 'corte', barber: null, week: 0, dayIdx: null, slot: null, name: '', phone: '', confirmed: false };
+const state = { service: 'corte', barber: null, week: 0, dayIdx: null, slot: null, name: '', phone: '', confirmed: false, fbKey: null };
 
 const defs = [
   { id:'corte', name:'Corte de pelo', duration:'30 min', mins:30, price:'$13.000' },
@@ -468,6 +468,7 @@ document.getElementById('prev-week').onclick = () => { state.week = Math.max(0, 
 document.getElementById('next-week').onclick = () => { state.week++; state.slot = null; render(); };
 document.getElementById('btn-confirm').onclick = () => {
   state.confirmed = true;
+  state.fbKey = null;
   render();
   if (state.slot && state.name) {
     const svc = defs.find(d => d.id === state.service);
@@ -488,11 +489,24 @@ document.getElementById('btn-confirm').onclick = () => {
         status: 'online',
         createdAt: new Date().toISOString()
       })
-    }).catch(() => {});
+    })
+    .then(r => r.json())
+    .then(data => { state.fbKey = data.name; })
+    .catch(() => {});
   }
 };
 document.getElementById('btn-cancel').onclick = () => { state.slot = null; state.confirmed = false; state.name = ''; state.phone = ''; render(); };
-document.getElementById('btn-cancel-confirmed').onclick = () => { state.slot = null; state.confirmed = false; state.name = ''; state.phone = ''; render(); };
+document.getElementById('btn-cancel-confirmed').onclick = () => {
+  if (state.fbKey) {
+    fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/bookings/' + state.fbKey + '.json', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cancelado' })
+    }).catch(() => {});
+    state.fbKey = null;
+  }
+  state.slot = null; state.confirmed = false; state.name = ''; state.phone = ''; render();
+};
 document.getElementById('input-name').oninput = e => { state.name = e.target.value; };
 document.getElementById('input-phone').oninput = e => { state.phone = e.target.value; };
 

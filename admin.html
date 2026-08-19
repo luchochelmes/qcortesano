@@ -270,7 +270,7 @@ function loadFirebaseBookings() {
     .then(r => r.json())
     .then(data => {
       if (!data) { S.fbBookings = []; }
-      else { S.fbBookings = Object.values(data).filter(b => b && b.status !== 'cancelado'); }
+      else { S.fbBookings = Object.entries(data).filter(([,b]) => b && b.status !== 'cancelado').map(([k,b]) => ({ ...b, _fbKey: k })); }
       if (S.user) render();
     })
     .catch(() => {});
@@ -372,9 +372,24 @@ function toggleStatus(id) {
 }
 function cancelAppt(id) {
   const a = S.appts.find(x => x.id === id);
-  if (!a) return;
-  a.status = a.status === 'cancelado' ? 'online' : 'cancelado';
-  render();
+  if (a) {
+    a.status = a.status === 'cancelado' ? 'online' : 'cancelado';
+    render();
+    return;
+  }
+  const fbIdx = S.fbBookings.findIndex(x => x.id === id);
+  if (fbIdx !== -1) {
+    const fb = S.fbBookings[fbIdx];
+    S.fbBookings.splice(fbIdx, 1);
+    if (fb._fbKey) {
+      fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/bookings/' + fb._fbKey + '.json', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelado' })
+      }).catch(() => {});
+    }
+    render();
+  }
 }
 function cancelFromDetail() {
   if (!S.detail) return;
