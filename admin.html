@@ -231,7 +231,7 @@
     <div id="svc-list" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="manual-form" style="margin-top:8px">
       <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:0.2em;color:rgba(242,242,238,0.45);text-transform:uppercase">Agregar servicio</span>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+      <div style="display:grid;grid-template-columns:1fr;gap:12px">
         <input id="new-svc-name"  class="form-input" placeholder="Nombre" />
         <input id="new-svc-dur"   class="form-input" placeholder="Duración (ej: 30 min)" />
         <input id="new-svc-mins"  class="form-input" placeholder="Minutos" type="number" min="5" />
@@ -367,15 +367,17 @@ function renderServicesTab() {
     return;
   }
   list.innerHTML = svcs.map(svc => `
-    <div style="display:flex;align-items:center;gap:12px;padding:16px 18px;border:1px solid rgba(255,255,255,0.14);border-radius:6px">
-      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+    <div style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;border:1px solid rgba(255,255,255,0.14);border-radius:6px">
+      <div style="display:flex;flex-direction:column;gap:3px">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:0.03em;line-height:1">${svc.name}</span>
         <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:0.14em;color:rgba(242,242,238,0.4);text-transform:uppercase">${svc.duration}</span>
       </div>
-      <input class="form-input" value="${svc.price}" style="width:120px;font-size:13px;text-align:right;padding:6px 0"
-        onblur="updateServicePrice('${svc.id}', this.value)"
-        onkeydown="if(event.key==='Enter')this.blur()" />
-      <button class="btn-text-danger" style="flex-shrink:0" onclick="deleteService('${svc.id}')">Eliminar</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input class="form-input" value="${svc.price}" style="flex:1;font-size:13px;padding:6px 0"
+          onblur="updateServicePrice('${svc.id}', this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()" />
+        <button class="btn-text-danger" style="flex-shrink:0" onclick="deleteService('${svc.id}')">Eliminar</button>
+      </div>
     </div>`).join('');
 }
 
