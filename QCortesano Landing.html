@@ -261,26 +261,24 @@
 const DAYS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
 const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const VALEN = { 2:[[600,780],[960,1200]], 3:[[600,780],[960,1200]], 4:[[600,1200]], 5:[[600,1200]], 6:[[600,1200]] };
-const ALEX_BY_WEEK = {
-  0: { 3:[[960,1200]], 6:[[600,840]] },
-  1: { 4:[[600,840]], 5:[[960,1200]] },
-  2: { 6:[[600,1080]] }
-};
+const ALEX = { 2:[[600,780],[960,1200]], 3:[[600,780],[960,1200]], 4:[[600,1200]], 5:[[600,1200]], 6:[[600,1200]] };
 const BOOKED = { '2':['10:30','11:00','17:15'], '4':['16:00'], '6':['12:00','12:15','18:30'] };
 
 function hhmm(m){ const h = Math.floor(m/60), mm = m%60; return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm; }
 
 const state = { service: 'corte', barber: null, week: 0, dayIdx: null, slot: null, name: '', phone: '', confirmed: false, fbKey: null };
 
-const defs = [
-  { id:'corte', name:'Corte de pelo', duration:'30 min', mins:30, price:'$13.000' },
-  { id:'combo', name:'Corte + Barba', duration:'30 min', mins:30, price:'$16.000' },
-  { id:'barba', name:'Solo Barba',    duration:'30 min', mins:30, price:'$3.000' },
-  { id:'color', name:'Colorimetría',  duration:'30 min', mins:30, price:'A consultar' }
+const DEFAULT_DEFS = [
+  { id:'corte', name:'Corte de pelo', duration:'30 min', mins:30, price:'$13.000', order:0 },
+  { id:'combo', name:'Corte + Barba', duration:'30 min', mins:30, price:'$16.000', order:1 },
+  { id:'barba', name:'Solo Barba',    duration:'30 min', mins:30, price:'$3.000',  order:2 },
+  { id:'color', name:'Colorimetría',  duration:'30 min', mins:30, price:'A consultar', order:3 }
 ];
+let defs = [...DEFAULT_DEFS];
+let blockedDays = {};
 const bdefs = [
-  { id:'valen', name:'Valen', role:'Fundador', photoNote:'foto de valen' },
-  { id:'alex', name:'Alex', role:'Peluquero part-time', photoNote:'foto de alex' }
+  { id:'valen', name:'Valen', role:'Fundador',   photo:'valen.jpeg' },
+  { id:'alex',  name:'Alex',  role:'Peluquero',  photo:'alex.jpeg'  }
 ];
 
 function weekStart(offset) {
@@ -292,9 +290,7 @@ function weekStart(offset) {
 }
 
 function slotsFor(dow, duration) {
-  const ranges = state.barber === 'valen'
-    ? (VALEN[dow] || [])
-    : ((ALEX_BY_WEEK[state.week] || {})[dow] || []);
+  const ranges = state.barber === 'valen' ? (VALEN[dow] || []) : (ALEX[dow] || []);
   const booked = BOOKED[String(dow)] || [];
   const out = [];
   ranges.forEach(([from, to]) => {
@@ -336,9 +332,9 @@ function renderBarbers() {
     const btn = document.createElement('button');
     btn.className = 'barber-card' + (on ? ' selected' : '');
     btn.innerHTML = `
-      <div style="position:relative;aspect-ratio:4/3;background:repeating-linear-gradient(135deg,#1c1c1a 0 12px,#141413 12px 24px)">
+      <div style="position:relative;aspect-ratio:4/3;background:#1c1c1a;overflow:hidden">
+        <img src="${b.photo}" alt="${b.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top" />
         <div class="photo-veil"></div>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.2em;color:rgba(242,242,238,0.4);text-transform:uppercase;white-space:nowrap">${b.photoNote}</div>
       </div>
       <div style="padding:24px 26px 26px;display:flex;justify-content:space-between;align-items:flex-end;gap:14px">
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -374,7 +370,7 @@ function renderCalendar() {
     const d   = new Date(start); d.setDate(d.getDate() + i);
     const dow = d.getDay();
     const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
-    days.push({ i, d, dow, iso, times: slotsFor(dow, svc.mins) });
+    days.push({ i, d, dow, iso, times: (blockedDays[state.barber] || {})[iso] ? [] : slotsFor(dow, svc.mins) });
   }
 
   // Auto-select first day with available slots
@@ -510,7 +506,17 @@ document.getElementById('btn-cancel-confirmed').onclick = () => {
 document.getElementById('input-name').oninput = e => { state.name = e.target.value; };
 document.getElementById('input-phone').oninput = e => { state.phone = e.target.value; };
 
-render();
+Promise.all([
+  fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/blockedDays.json')
+    .then(r => r.json()).then(d => { blockedDays = d || {}; }).catch(() => {}),
+  fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/services.json')
+    .then(r => r.json()).then(data => {
+      if (data && typeof data === 'object') {
+        const loaded = Object.values(data).filter(Boolean);
+        if (loaded.length > 0) defs = loaded.sort((a, b) => (a.order||0) - (b.order||0));
+      }
+    }).catch(() => {})
+]).finally(() => render());
 
 // ── Legal modal ──
 const LEGAL = {

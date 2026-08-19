@@ -137,7 +137,7 @@
     <button class="login-btn" onclick="login('alex')">
       <span style="display:flex;flex-direction:column;gap:5px">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1;letter-spacing:0.04em">Alex</span>
-        <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.18em;color:rgba(242,242,238,0.45);text-transform:uppercase">Peluquero part-time</span>
+        <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:0.18em;color:rgba(242,242,238,0.45);text-transform:uppercase">Peluquero</span>
       </span>
       <span style="font-size:18px">→</span>
     </button>
@@ -163,6 +163,7 @@
     <div style="display:flex;gap:6px;padding:0 20px 12px">
       <button id="tab-cal" class="tab-btn active" onclick="setTab('cal')">Calendario</button>
       <button id="tab-list" class="tab-btn" onclick="setTab('list')">Turnos</button>
+      <button id="tab-svc" class="tab-btn" onclick="setTab('svc')">Servicios</button>
     </div>
   </header>
 
@@ -176,7 +177,7 @@
     </div>
 
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between">
-      <button id="paint-btn" class="paint-btn" onclick="togglePaint()"></button>
+      <button id="paint-btn" class="paint-btn"></button>
       <div style="display:flex;gap:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:0.14em;color:rgba(242,242,238,0.45);text-transform:uppercase;align-items:center">
         <span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;background:rgba(242,242,238,0.16);box-shadow:inset 0 0 0 1px rgba(242,242,238,0.42);border-radius:2px"></span>libre</span>
         <span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;background:#9fb7a4;border-radius:2px"></span>turno</span>
@@ -219,6 +220,24 @@
     </div>
   </div>
 
+  <!-- SERVICES VIEW -->
+  <div id="view-svc" style="display:none;padding:18px 20px 140px;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:40px;line-height:1;letter-spacing:0.03em;margin:0">Servicios</h2>
+    </div>
+    <div id="svc-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="manual-form" style="margin-top:8px">
+      <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:0.2em;color:rgba(242,242,238,0.45);text-transform:uppercase">Agregar servicio</span>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+        <input id="new-svc-name"  class="form-input" placeholder="Nombre" />
+        <input id="new-svc-dur"   class="form-input" placeholder="Duración (ej: 30 min)" />
+        <input id="new-svc-mins"  class="form-input" placeholder="Minutos" type="number" min="5" />
+        <input id="new-svc-price" class="form-input" placeholder="Precio (ej: $13.000)" />
+      </div>
+      <button class="btn-add" onclick="addService()">Agregar</button>
+    </div>
+  </div>
+
   <!-- Status bar -->
   <div style="position:fixed;left:0;right:0;bottom:0;z-index:50;padding:14px 20px 18px;background:linear-gradient(180deg,rgba(10,10,10,0) 0%,rgba(10,10,10,0.95) 40%);display:flex;justify-content:center;pointer-events:none">
     <span id="status-bar" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:0.18em;color:rgba(242,242,238,0.45);text-transform:uppercase;text-align:center"></span>
@@ -231,6 +250,7 @@ const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov
 
 // Horario base Valen: mar–mié 10–13 y 16–20, jue–sáb 10–20 (en minutos desde medianoche)
 const VALEN = { 2:[[600,780],[960,1200]], 3:[[600,780],[960,1200]], 4:[[600,1200]], 5:[[600,1200]], 6:[[600,1200]] };
+const ALEX  = { 2:[[600,780],[960,1200]], 3:[[600,780],[960,1200]], 4:[[600,1200]], 5:[[600,1200]], 6:[[600,1200]] };
 
 function hhmm(m){ const h = Math.floor(m/60), mm = m%60; return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm; }
 function cellKey(dayIdx, min){ return dayIdx + '|' + min; }
@@ -248,10 +268,21 @@ const S = {
   dayIdx: 1,
   appts: [],
   fbBookings: [],
+  fbServices: null,
+  fbBlockedDays: {},
   newName: '', newPhone: '', newWhen: ''
 };
 
-const FB_URL = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/bookings.json';
+const FB_URL         = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/bookings.json';
+const FB_SVC_URL     = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/services';
+const FB_BLOCKED_URL = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/blockedDays';
+
+const DEFAULT_SERVICES = {
+  corte: { id:'corte', name:'Corte de pelo', duration:'30 min', mins:30, price:'$13.000', order:0 },
+  combo: { id:'combo', name:'Corte + Barba', duration:'30 min', mins:30, price:'$16.000', order:1 },
+  barba: { id:'barba', name:'Solo Barba',    duration:'30 min', mins:30, price:'$3.000',  order:2 },
+  color: { id:'color', name:'Colorimetría',  duration:'30 min', mins:30, price:'A consultar', order:3 }
+};
 
 function computedFbAppts() {
   const start = weekStart();
@@ -264,6 +295,111 @@ function computedFbAppts() {
 }
 
 function allAppts() { return [...S.appts, ...computedFbAppts()]; }
+
+function loadBlockedDays() {
+  fetch(FB_BLOCKED_URL + '.json')
+    .then(r => r.json())
+    .then(data => { S.fbBlockedDays = data || {}; if (S.user) render(); })
+    .catch(() => {});
+}
+
+function loadAdminServices() {
+  fetch(FB_SVC_URL + '.json')
+    .then(r => r.json())
+    .then(data => {
+      if (!data || Object.keys(data).length === 0) {
+        S.fbServices = Object.values(DEFAULT_SERVICES);
+        fetch(FB_SVC_URL + '.json', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(DEFAULT_SERVICES)
+        }).catch(() => {});
+      } else {
+        S.fbServices = Object.values(data).filter(Boolean).sort((a, b) => (a.order||0) - (b.order||0));
+      }
+      if (S.tab === 'svc') renderServicesTab();
+    })
+    .catch(() => { S.fbServices = Object.values(DEFAULT_SERVICES); });
+}
+
+function isDayBlockedForAlex(dayIdx) {
+  const d = new Date(weekStart()); d.setDate(d.getDate() + dayIdx);
+  const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  return !!((S.fbBlockedDays.alex || {})[iso]);
+}
+
+function toggleAlexDay(dayIdx) {
+  const d = new Date(weekStart()); d.setDate(d.getDate() + dayIdx);
+  const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  const alexBlocked = Object.assign({}, S.fbBlockedDays.alex || {});
+  if (alexBlocked[iso]) delete alexBlocked[iso]; else alexBlocked[iso] = true;
+  S.fbBlockedDays = Object.assign({}, S.fbBlockedDays, { alex: alexBlocked });
+  fetch(FB_BLOCKED_URL + '/alex.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(alexBlocked)
+  }).catch(() => {});
+  render();
+}
+
+function renderServicesTab() {
+  const list = document.getElementById('svc-list');
+  if (!list) return;
+  const svcs = S.fbServices || [];
+  if (svcs.length === 0) {
+    list.innerHTML = '<p style="font-size:13px;color:rgba(242,242,238,0.4)">No hay servicios cargados.</p>';
+    return;
+  }
+  list.innerHTML = svcs.map(svc => `
+    <div style="display:flex;align-items:center;gap:12px;padding:16px 18px;border:1px solid rgba(255,255,255,0.14);border-radius:6px">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:0.03em;line-height:1">${svc.name}</span>
+        <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:0.14em;color:rgba(242,242,238,0.4);text-transform:uppercase">${svc.duration}</span>
+      </div>
+      <input class="form-input" value="${svc.price}" style="width:120px;font-size:13px;text-align:right;padding:6px 0"
+        onblur="updateServicePrice('${svc.id}', this.value)"
+        onkeydown="if(event.key==='Enter')this.blur()" />
+      <button class="btn-text-danger" style="flex-shrink:0" onclick="deleteService('${svc.id}')">Eliminar</button>
+    </div>`).join('');
+}
+
+function updateServicePrice(id, price) {
+  const svc = (S.fbServices || []).find(s => s.id === id);
+  if (!svc || svc.price === price.trim()) return;
+  svc.price = price.trim();
+  fetch(FB_SVC_URL + '/' + id + '.json', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ price: price.trim() })
+  }).catch(() => {});
+}
+
+function deleteService(id) {
+  S.fbServices = (S.fbServices || []).filter(s => s.id !== id);
+  fetch(FB_SVC_URL + '/' + id + '.json', { method: 'DELETE' }).catch(() => {});
+  renderServicesTab();
+}
+
+function addService() {
+  const name  = document.getElementById('new-svc-name').value.trim();
+  if (!name) return;
+  const dur   = document.getElementById('new-svc-dur').value.trim() || '30 min';
+  const mins  = parseInt(document.getElementById('new-svc-mins').value) || 30;
+  const price = document.getElementById('new-svc-price').value.trim() || 'A consultar';
+  const id    = 'svc_' + Date.now();
+  const order = (S.fbServices || []).length;
+  const svc   = { id, name, duration: dur, mins, price, order };
+  S.fbServices = [...(S.fbServices || []), svc];
+  fetch(FB_SVC_URL + '/' + id + '.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(svc)
+  }).catch(() => {});
+  ['new-svc-name','new-svc-dur','new-svc-mins','new-svc-price'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  renderServicesTab();
+}
 
 function loadFirebaseBookings() {
   fetch(FB_URL)
@@ -289,7 +425,8 @@ function isOpen(dayIdx, dow, min) {
     if ((S.blocked[wk] || {})[cellKey(dayIdx, min)]) return false;
     return (VALEN[dow] || []).some(r => min >= r[0] && min < r[1]);
   }
-  return !!((S.alexOpen[wk] || {})[cellKey(dayIdx, min)]);
+  if (isDayBlockedForAlex(dayIdx)) return false;
+  return (ALEX[dow] || []).some(r => min >= r[0] && min < r[1]);
 }
 
 function toggleCell(dayIdx, min) {
@@ -311,13 +448,15 @@ function toggleCell(dayIdx, min) {
 function login(user) {
   S.user  = user;
   S.tab   = 'cal';
-  S.paint = user === 'alex'; // Alex arranca en modo pintura
+  S.paint = false;
   S.detail = null;
   S.week  = 0;
   document.getElementById('view-login').style.display = 'none';
   const dash = document.getElementById('view-dash');
   dash.style.display = 'flex';
   loadFirebaseBookings();
+  loadBlockedDays();
+  loadAdminServices();
   if (!S._poll) S._poll = setInterval(loadFirebaseBookings, 30000);
   render();
 }
@@ -335,8 +474,11 @@ function setTab(tab) {
   S.detail = null;
   document.getElementById('tab-cal').classList.toggle('active', tab === 'cal');
   document.getElementById('tab-list').classList.toggle('active', tab === 'list');
+  document.getElementById('tab-svc').classList.toggle('active', tab === 'svc');
   document.getElementById('view-cal').style.display  = tab === 'cal'  ? 'flex'  : 'none';
   document.getElementById('view-list').style.display = tab === 'list' ? 'flex'  : 'none';
+  document.getElementById('view-svc').style.display  = tab === 'svc'  ? 'flex'  : 'none';
+  if (tab === 'svc') renderServicesTab();
   render();
 }
 
@@ -405,18 +547,24 @@ function render() {
 
   // Header
   document.getElementById('hdr-name').textContent = isAlex ? 'Alex' : 'Valen';
-  document.getElementById('hdr-role').textContent = isAlex ? 'Peluquero part-time' : 'Fundador';
+  document.getElementById('hdr-role').textContent = isAlex ? 'Peluquero' : 'Fundador';
 
-  // Paint button
+  // Paint / day-block button
   const pb = document.getElementById('paint-btn');
-  pb.textContent = isAlex
-    ? (S.paint ? 'Pintando disponibilidad' : 'Pintar disponibilidad')
-    : (S.paint ? 'Bloqueando horarios' : 'Bloquear horarios');
-  pb.classList.toggle('active', S.paint);
+  if (isAlex) {
+    const blocked = isDayBlockedForAlex(S.dayIdx);
+    pb.textContent = blocked ? 'Abrir este día' : 'Cerrar este día';
+    pb.classList.toggle('active', blocked);
+    pb.onclick = () => toggleAlexDay(S.dayIdx);
+  } else {
+    pb.textContent = S.paint ? 'Bloqueando horarios' : 'Bloquear horarios';
+    pb.classList.toggle('active', S.paint);
+    pb.onclick = togglePaint;
+  }
 
   // Help text
   document.getElementById('help-text').textContent = isAlex
-    ? 'Arrancás la semana sin horarios. Activá el modo y tocá los bloques de 15 minutos en los que vas a estar. Se publican al instante para los clientes.'
+    ? 'Tenés todos los días disponibles. Tocá "Cerrar este día" para bloquear un día que no vas a trabajar.'
     : 'Tu horario base está cargado (mar–mié 10–13 y 16–20, jue–sáb 10–20). Activá el modo y tocá un bloque para bloquearlo por feriado o imprevisto.';
 
   // Week label
@@ -484,8 +632,9 @@ function renderCalendar() {
   daysEl.innerHTML = days.map(({ i, d, dow }) => {
     const on      = S.dayIdx === i;
     const hasAppt = mine.some(a => a.day === i);
+    const blocked = S.user === 'alex' && isDayBlockedForAlex(i);
     const dotColor = on ? '#0a0a0a' : '#9fb7a4';
-    return `<button class="day-chip${on ? ' selected' : ''}" onclick="selectAdminDay(${i})">
+    return `<button class="day-chip${on ? ' selected' : ''}" onclick="selectAdminDay(${i})" style="${blocked ? 'opacity:0.38' : ''}">
       <span class="day-chip-name">${DAYS[dow]}</span>
       <span class="day-chip-date">${d.getDate()}</span>
       <span class="day-dot" style="background:${hasAppt ? dotColor : 'transparent'}"></span>
@@ -634,9 +783,10 @@ function checkPassword() {
     document.getElementById('pwd-input').focus();
   }
 }
-// Asegurar que la vista lista empiece oculta
+// Asegurar que las vistas empiecen ocultas
 document.getElementById('view-list').style.display = 'none';
 document.getElementById('view-cal').style.display  = 'flex';
+document.getElementById('view-svc').style.display  = 'none';
 </script>
 </body>
 </html>
