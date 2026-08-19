@@ -177,7 +177,10 @@
     </div>
 
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between">
-      <button id="paint-btn" class="paint-btn"></button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="day-btn" class="paint-btn">Cerrar este día</button>
+        <button id="paint-btn" class="paint-btn">Bloquear horarios</button>
+      </div>
       <div style="display:flex;gap:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:0.14em;color:rgba(242,242,238,0.45);text-transform:uppercase;align-items:center">
         <span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;background:rgba(242,242,238,0.16);box-shadow:inset 0 0 0 1px rgba(242,242,238,0.42);border-radius:2px"></span>libre</span>
         <span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;background:#9fb7a4;border-radius:2px"></span>turno</span>
@@ -262,20 +265,19 @@ const S = {
   week: 0,
   paint: false,
   detail: null,       // appt id
-  // Alex empieza sin horarios; se pintan manualmente
-  alexOpen: {},
-  blocked: {},
   dayIdx: 1,
   appts: [],
   fbBookings: [],
   fbServices: null,
   fbBlockedDays: {},
+  fbBlockedSlots: {},
   newName: '', newPhone: '', newWhen: ''
 };
 
 const FB_URL         = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/bookings.json';
 const FB_SVC_URL     = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/services';
 const FB_BLOCKED_URL = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/blockedDays';
+const FB_SLOTS_URL   = 'https://qcortesano-9aa75-default-rtdb.firebaseio.com/blockedSlots';
 
 const DEFAULT_SERVICES = {
   corte: { id:'corte', name:'Corte de pelo', duration:'30 min', mins:30, price:'$13.000', order:0 },
@@ -296,11 +298,11 @@ function computedFbAppts() {
 
 function allAppts() { return [...S.appts, ...computedFbAppts()]; }
 
-function loadBlockedDays() {
-  fetch(FB_BLOCKED_URL + '.json')
-    .then(r => r.json())
-    .then(data => { S.fbBlockedDays = data || {}; if (S.user) render(); })
-    .catch(() => {});
+function loadBlockedData() {
+  Promise.all([
+    fetch(FB_BLOCKED_URL + '.json').then(r => r.json()).then(data => { S.fbBlockedDays = data || {}; }).catch(() => {}),
+    fetch(FB_SLOTS_URL + '.json').then(r => r.json()).then(data => { S.fbBlockedSlots = data || {}; }).catch(() => {})
+  ]).then(() => { if (S.user) render(); });
 }
 
 function loadAdminServices() {
@@ -322,24 +324,38 @@ function loadAdminServices() {
     .catch(() => { S.fbServices = Object.values(DEFAULT_SERVICES); });
 }
 
-function isDayBlockedForAlex(dayIdx) {
+function isDayBlocked(dayIdx) {
   const d = new Date(weekStart()); d.setDate(d.getDate() + dayIdx);
   const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
-  return !!((S.fbBlockedDays.alex || {})[iso]);
+  return !!((S.fbBlockedDays[S.user] || {})[iso]);
 }
 
-function toggleAlexDay(dayIdx) {
+function toggleDay(dayIdx) {
   const d = new Date(weekStart()); d.setDate(d.getDate() + dayIdx);
   const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
-  const alexBlocked = Object.assign({}, S.fbBlockedDays.alex || {});
-  if (alexBlocked[iso]) delete alexBlocked[iso]; else alexBlocked[iso] = true;
-  S.fbBlockedDays = Object.assign({}, S.fbBlockedDays, { alex: alexBlocked });
-  fetch(FB_BLOCKED_URL + '/alex.json', {
+  const userBlocked = Object.assign({}, S.fbBlockedDays[S.user] || {});
+  if (userBlocked[iso]) delete userBlocked[iso]; else userBlocked[iso] = true;
+  S.fbBlockedDays = Object.assign({}, S.fbBlockedDays, { [S.user]: userBlocked });
+  fetch(FB_BLOCKED_URL + '/' + S.user + '.json', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(alexBlocked)
+    body: JSON.stringify(userBlocked)
   }).catch(() => {});
   render();
+}
+
+function toggleSlot(dayIdx, min) {
+  const d = new Date(weekStart()); d.setDate(d.getDate() + dayIdx);
+  const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  const key = iso + '|' + min;
+  const userSlots = Object.assign({}, S.fbBlockedSlots[S.user] || {});
+  if (userSlots[key]) delete userSlots[key]; else userSlots[key] = true;
+  S.fbBlockedSlots = Object.assign({}, S.fbBlockedSlots, { [S.user]: userSlots });
+  fetch(FB_SLOTS_URL + '/' + S.user + '.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(userSlots)
+  }).catch(() => {});
 }
 
 function renderServicesTab() {
@@ -420,28 +436,12 @@ function weekStart() {
 }
 
 function isOpen(dayIdx, dow, min) {
-  const wk = String(S.week);
-  if (S.user === 'valen') {
-    if ((S.blocked[wk] || {})[cellKey(dayIdx, min)]) return false;
-    return (VALEN[dow] || []).some(r => min >= r[0] && min < r[1]);
-  }
-  if (isDayBlockedForAlex(dayIdx)) return false;
-  return (ALEX[dow] || []).some(r => min >= r[0] && min < r[1]);
-}
-
-function toggleCell(dayIdx, min) {
-  const wk = String(S.week);
-  if (S.user === 'alex') {
-    const map = Object.assign({}, S.alexOpen[wk] || {});
-    const k = cellKey(dayIdx, min);
-    if (map[k]) delete map[k]; else map[k] = 1;
-    S.alexOpen[wk] = map;
-  } else {
-    const map = Object.assign({}, S.blocked[wk] || {});
-    const k = cellKey(dayIdx, min);
-    if (map[k]) delete map[k]; else map[k] = 1;
-    S.blocked[wk] = map;
-  }
+  const d = new Date(weekStart()); d.setDate(d.getDate() + dayIdx);
+  const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  const schedule = S.user === 'valen' ? VALEN : ALEX;
+  if ((S.fbBlockedDays[S.user] || {})[iso]) return false;
+  if ((S.fbBlockedSlots[S.user] || {})[iso + '|' + min]) return false;
+  return (schedule[dow] || []).some(r => min >= r[0] && min < r[1]);
 }
 
 // ── LOGIN / LOGOUT ──────────────────────────────────────────────
@@ -455,7 +455,7 @@ function login(user) {
   const dash = document.getElementById('view-dash');
   dash.style.display = 'flex';
   loadFirebaseBookings();
-  loadBlockedDays();
+  loadBlockedData();
   loadAdminServices();
   if (!S._poll) S._poll = setInterval(loadFirebaseBookings, 30000);
   render();
@@ -549,23 +549,22 @@ function render() {
   document.getElementById('hdr-name').textContent = isAlex ? 'Alex' : 'Valen';
   document.getElementById('hdr-role').textContent = isAlex ? 'Peluquero' : 'Fundador';
 
-  // Paint / day-block button
+  // Day-close button (ambos peluqueros)
+  const db = document.getElementById('day-btn');
+  const dayBlocked = isDayBlocked(S.dayIdx);
+  db.textContent = dayBlocked ? 'Abrir este día' : 'Cerrar este día';
+  db.classList.toggle('active', dayBlocked);
+  db.onclick = () => toggleDay(S.dayIdx);
+
+  // Paint / slot-block button (ambos peluqueros)
   const pb = document.getElementById('paint-btn');
-  if (isAlex) {
-    const blocked = isDayBlockedForAlex(S.dayIdx);
-    pb.textContent = blocked ? 'Abrir este día' : 'Cerrar este día';
-    pb.classList.toggle('active', blocked);
-    pb.onclick = () => toggleAlexDay(S.dayIdx);
-  } else {
-    pb.textContent = S.paint ? 'Bloqueando horarios' : 'Bloquear horarios';
-    pb.classList.toggle('active', S.paint);
-    pb.onclick = togglePaint;
-  }
+  pb.textContent = S.paint ? 'Bloqueando horarios' : 'Bloquear horarios';
+  pb.classList.toggle('active', S.paint);
+  pb.onclick = togglePaint;
 
   // Help text
-  document.getElementById('help-text').textContent = isAlex
-    ? 'Tenés todos los días disponibles. Tocá "Cerrar este día" para bloquear un día que no vas a trabajar.'
-    : 'Tu horario base está cargado (mar–mié 10–13 y 16–20, jue–sáb 10–20). Activá el modo y tocá un bloque para bloquearlo por feriado o imprevisto.';
+  document.getElementById('help-text').textContent =
+    'Usá "Cerrar este día" para bloquear el día completo, o activá "Bloquear horarios" para cerrar franjas individuales.';
 
   // Week label
   const start = weekStart();
@@ -619,8 +618,9 @@ function selectAdminDay(i) {
 }
 
 function renderCalendar() {
-  const start = weekStart();
-  const mine  = allAppts().filter(a => a.owner === S.user && a.status !== 'cancelado');
+  const start    = weekStart();
+  const mine     = allAppts().filter(a => a.owner === S.user && a.status !== 'cancelado');
+  const schedule = S.user === 'valen' ? VALEN : ALEX;
 
   // ── Day chips ──
   const daysEl = document.getElementById('admin-days');
@@ -630,9 +630,9 @@ function renderCalendar() {
     days.push({ i, d, dow: d.getDay() });
   }
   daysEl.innerHTML = days.map(({ i, d, dow }) => {
-    const on      = S.dayIdx === i;
-    const hasAppt = mine.some(a => a.day === i);
-    const blocked = S.user === 'alex' && isDayBlockedForAlex(i);
+    const on       = S.dayIdx === i;
+    const hasAppt  = mine.some(a => a.day === i);
+    const blocked  = isDayBlocked(i);
     const dotColor = on ? '#0a0a0a' : '#9fb7a4';
     return `<button class="day-chip${on ? ' selected' : ''}" onclick="selectAdminDay(${i})" style="${blocked ? 'opacity:0.38' : ''}">
       <span class="day-chip-name">${DAYS[dow]}</span>
@@ -646,11 +646,17 @@ function renderCalendar() {
   const sel = days.find(x => x.i === S.dayIdx);
   if (!sel) { slotsEl.innerHTML = ''; return; }
 
+  const d2 = new Date(start); d2.setDate(d2.getDate() + S.dayIdx);
+  const iso = d2.getFullYear() + '-' + (d2.getMonth()+1) + '-' + d2.getDate();
+  const dayIsBlocked = isDayBlocked(S.dayIdx);
+
   let html = '';
   for (let m = 600; m < 1200; m += 30) {
-    const open = isOpen(S.dayIdx, sel.dow, m);
-    const appt = mine.find(a => a.day === S.dayIdx && m >= a.min && m < a.min + a.dur);
+    const open  = isOpen(S.dayIdx, sel.dow, m);
+    const appt  = mine.find(a => a.day === S.dayIdx && m >= a.min && m < a.min + a.dur);
     const isFirstSlot = appt && m === appt.min;
+    const inSchedule  = (schedule[sel.dow] || []).some(r => m >= r[0] && m < r[1]);
+    const slotManuallyBlocked = !dayIsBlocked && inSchedule && !open;
 
     if (appt) {
       html += `<button class="admin-slot admin-slot-booked" onclick="slotClick(${S.dayIdx},${m})">
@@ -664,32 +670,28 @@ function renderCalendar() {
         <span class="admin-slot-label">Libre</span>
         ${S.paint ? '<span class="admin-slot-sub" style="color:rgba(242,242,238,0.3)">toca para bloquear</span>' : ''}
       </button>`;
+    } else if (slotManuallyBlocked && S.paint) {
+      html += `<button class="admin-slot admin-slot-closed" onclick="slotClick(${S.dayIdx},${m})" style="opacity:0.55;cursor:pointer">
+        <span class="admin-slot-time">${hhmm(m)}</span>
+        <span class="admin-slot-label" style="color:rgba(242,242,238,0.5)">Bloqueado</span>
+        <span class="admin-slot-sub" style="color:rgba(242,242,238,0.3)">toca para abrir</span>
+      </button>`;
     } else {
       html += `<button class="admin-slot admin-slot-closed" disabled>
         <span class="admin-slot-time">${hhmm(m)}</span>
-        <span class="admin-slot-label" style="color:rgba(242,242,238,0.3)">Cerrado</span>
-        ${S.paint && S.user === 'alex' ? '<span class="admin-slot-sub" style="color:rgba(242,242,238,0.3)">toca para abrir</span>' : ''}
+        <span class="admin-slot-label" style="color:rgba(242,242,238,0.3)">${inSchedule ? 'Bloqueado' : 'Cerrado'}</span>
       </button>`;
     }
   }
   slotsEl.innerHTML = html;
-
-  // Re-attach click handlers for paint on closed slots (Alex only)
-  if (S.paint && S.user === 'alex') {
-    slotsEl.querySelectorAll('.admin-slot-closed').forEach(btn => {
-      btn.disabled = false;
-      const parts = btn.querySelector('.admin-slot-time').textContent.split(':');
-      const m = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      btn.onclick = () => slotClick(S.dayIdx, m);
-    });
-  }
 }
 
 function slotClick(dayIdx, m) {
+  if (S.paint && isDayBlocked(dayIdx)) return;
   const mine = allAppts().filter(a => a.owner === S.user && a.status !== 'cancelado');
   const appt = mine.find(a => a.day === dayIdx && m >= a.min && m < a.min + a.dur);
   if (appt) { S.detail = appt.id; renderDetail(); return; }
-  if (S.paint) { toggleCell(dayIdx, m); renderCalendar(); }
+  if (S.paint) { toggleSlot(dayIdx, m); renderCalendar(); }
 }
 
 function renderDetail() {

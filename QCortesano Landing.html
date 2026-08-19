@@ -276,6 +276,7 @@ const DEFAULT_DEFS = [
 ];
 let defs = [...DEFAULT_DEFS];
 let blockedDays = {};
+let blockedSlots = {};
 const bdefs = [
   { id:'valen', name:'Valen', role:'Fundador',   photo:'valen.jpeg' },
   { id:'alex',  name:'Alex',  role:'Peluquero',  photo:'alex.jpeg'  }
@@ -289,12 +290,15 @@ function weekStart(offset) {
   return d;
 }
 
-function slotsFor(dow, duration) {
-  const ranges = state.barber === 'valen' ? (VALEN[dow] || []) : (ALEX[dow] || []);
+function slotsFor(dow, duration, iso) {
+  const barber = state.barber;
+  const ranges = barber === 'valen' ? (VALEN[dow] || []) : (ALEX[dow] || []);
   const booked = BOOKED[String(dow)] || [];
+  const userSlots = (blockedSlots[barber] || {});
   const out = [];
   ranges.forEach(([from, to]) => {
     for (let m = from; m + duration <= to; m += 30) {
+      if (userSlots[iso + '|' + m]) continue;
       let free = true;
       for (let k = m; k < m + duration; k += 15) if (booked.indexOf(hhmm(k)) >= 0) free = false;
       if (free) out.push(hhmm(m));
@@ -370,7 +374,7 @@ function renderCalendar() {
     const d   = new Date(start); d.setDate(d.getDate() + i);
     const dow = d.getDay();
     const iso = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
-    days.push({ i, d, dow, iso, times: (blockedDays[state.barber] || {})[iso] ? [] : slotsFor(dow, svc.mins) });
+    days.push({ i, d, dow, iso, times: (blockedDays[state.barber] || {})[iso] ? [] : slotsFor(dow, svc.mins, iso) });
   }
 
   // Auto-select first day with available slots
@@ -509,6 +513,8 @@ document.getElementById('input-phone').oninput = e => { state.phone = e.target.v
 Promise.all([
   fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/blockedDays.json')
     .then(r => r.json()).then(d => { blockedDays = d || {}; }).catch(() => {}),
+  fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/blockedSlots.json')
+    .then(r => r.json()).then(d => { blockedSlots = d || {}; }).catch(() => {}),
   fetch('https://qcortesano-9aa75-default-rtdb.firebaseio.com/services.json')
     .then(r => r.json()).then(data => {
       if (data && typeof data === 'object') {
